@@ -155,8 +155,8 @@ def train(learning_rate, epochs, batch_size):
     val = get_batches(batch_size, train=False)
     model = build_net(img_width, img_height, batch_size, learning_rate)
     checkpoint = ModelCheckpoint('model_weights.hd5', monitor='val_loss')
-    model.fit_generator(gen, epochs=epochs, steps_per_epoch=math.ceil(train_len/batch_size),
-                        validation_data=val, validation_steps=math.ceil(test_len/batch_size), 
+    model.fit_generator(gen, epochs=epochs, steps_per_epoch=int(math.ceil(train_len/batch_size)),
+                        validation_data=val, validation_steps=int(math.ceil(test_len/batch_size)), 
                         verbose=1, callbacks=[checkpoint])
 
 train(1e-3, 10, 32)
