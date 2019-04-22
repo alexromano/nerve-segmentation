@@ -59,7 +59,7 @@ def run_length_enc(label):
 
 def submission():
     test_images = get_test_images()
-    get_predictions(test_images[:10])
+    get_predictions(test_images)
 
 # img, rle
 # 1, 1 1 4 10
