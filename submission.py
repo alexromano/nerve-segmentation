@@ -1,13 +1,17 @@
 import numpy as np
-import datetime.datetime as dt
+from datetime import datetime as dt
+from PIL import Image
+import os
 import csv
 import cv2
 from tensorflow.keras.models import Model, load_model
+from train import preprocess
 
 original_width = 420
 original_height = 580
 
 def get_test_images():
+    print("Getting test images..")
     files = os.listdir("ultrasound-nerve-segmentation/test")
     test_imgs = []
     for f in files:
@@ -21,19 +25,22 @@ def get_test_images():
     return np.expand_dims(np.array(test_imgs, dtype='float32'), axis=3)
 
 def get_predictions(images):
+    print("Loading model..")
     model = load_model('model_weights.hd5', compile=False)
     img_masks = model.predict(images, batch_size=256, verbose=1)
     
-    img_masks_sized = np.zeros((img_masks.shape[0], img_masks.shape[1], img_masks.shape[2])) 
+    img_masks_sized = np.zeros((img_masks.shape[0], original_height, original_width)) 
     for i in range(img_masks.shape[0]):
         img_masks_sized[i] = cv2.resize(img_masks[i], (original_width, original_height))
-    
-    with open(str(dt.now())+'.csv', 'w') as f:
-        writer = csv.writer(f, delimiter=',')
-        writer.writerow(["image", "pixels"])
-        for i, mask in enumerate(img_masks_sized):
-            print(run_length_enc(mask))
-            writer.writerow([str(i + 1), run_length_enc(mask)])
+
+    img_masks_sized[img_masks_sized >= 0.5] = 1
+    img_masks_sized[img_masks_sized < 0.5] = 0
+    print(img_masks_sized)
+    # with open(str(dt.now())+'.csv', 'w') as f:
+    #     writer = csv.writer(f, delimiter=',')
+    #     writer.writerow(["image", "pixels"])
+    #     for i, mask in enumerate(img_masks_sized):
+    #         writer.writerow([str(i + 1), run_length_enc(mask)])
 
 # run length encoding
 def run_length_enc(label):
@@ -52,9 +59,9 @@ def run_length_enc(label):
 
 def submission():
     test_images = get_test_images()
-    get_predictions(test_images)
+    get_predictions(test_images[:10])
 
 # img, rle
 # 1, 1 1 4 10
 
-if __name__ = "__main__": submission()
+if __name__ == "__main__": submission()
