@@ -14,7 +14,7 @@ def get_test_images():
     print("Getting test images..")
     files = os.listdir("ultrasound-nerve-segmentation/test")
     test_imgs = []
-    for f in files:
+    for f in files[:10]:
         im = Image.open("ultrasound-nerve-segmentation/test/"+f)
         im_arr = preprocess(im)
         test_imgs.append(im_arr)
@@ -29,18 +29,19 @@ def get_predictions(images):
     model = load_model('model_weights.hd5', compile=False)
     img_masks = model.predict(images, batch_size=256, verbose=1)
     
+    print("Running predictions")
     img_masks_sized = np.zeros((img_masks.shape[0], original_height, original_width)) 
     for i in range(img_masks.shape[0]):
         img_masks_sized[i] = cv2.resize(img_masks[i], (original_width, original_height))
 
-    img_masks_sized[img_masks_sized >= 0.5] = 1
-    img_masks_sized[img_masks_sized < 0.5] = 0
-    print(img_masks_sized)
-    # with open(str(dt.now())+'.csv', 'w') as f:
-    #     writer = csv.writer(f, delimiter=',')
-    #     writer.writerow(["image", "pixels"])
-    #     for i, mask in enumerate(img_masks_sized):
-    #         writer.writerow([str(i + 1), run_length_enc(mask)])
+    print("Saving predictions")
+    with open(str(dt.now())+'.csv', 'w') as f:
+        writer = csv.writer(f, delimiter=',')
+        writer.writerow(["image", "pixels"])
+        for i, mask in enumerate(img_masks_sized):
+            mask[mask >= 0.5] = 1
+            mask[mask < 0.5] = 0
+            writer.writerow([str(i + 1), run_length_enc(mask)])
 
 # run length encoding
 def run_length_enc(label):
