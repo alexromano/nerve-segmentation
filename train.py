@@ -3,12 +3,13 @@ from sklearn.model_selection import train_test_split
 import os
 from PIL import Image
 import tensorflow as tf
-from tensorflow.keras.models import Model
+from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.callbacks import ModelCheckpoint
 import tensorflow.keras.backend as K
-from tensorflow.keras.layers import Input, Conv2D, Conv2DTranspose, MaxPooling2D, concatenate, BatchNormalization
+from tensorflow.keras.layers import Input, Conv2D, Conv2DTranspose, MaxPooling2D, concatenate, BatchNormalization, Dropout
 from tensorflow.keras.optimizers import Adam
 import math
+import cv2
 
 files = os.listdir("ultrasound-nerve-segmentation/train")
 image_names = []
@@ -16,12 +17,14 @@ for f in files:
     if '_mask' not in f:
         image_names.append(os.path.splitext(f)[0])
         
-train_names, test_names = train_test_split(image_names[:500], test_size=0.1)
+train_names, test_names = train_test_split(image_names, test_size=0.1)
 train_len = len(train_names)
 test_len = len(test_names)
 
-img_width = 128
-img_height = 128
+ORIGINAL_WIDTH = 420
+ORIGINAL_HEIGHT = 580
+IMG_WIDTH = 128
+IMG_HEIGHT = 128
 
 # a smoothed version of dice coefficient
 def dice(y, y_pred):
@@ -64,28 +67,32 @@ def build_net(img_width, img_height, batch_size, learning_rate):
     conv5 = BatchNormalization()(conv5)
 
     conv6 = concatenate([Conv2DTranspose(256, (2,2), strides=(2,2), padding='same')(conv5), conv4])
+    drop6 = Dropout(rate=0.5)(conv6)
+    conv6 = Conv2D(256, (3,3), activation='relu', padding='same')(drop6)
+    # conv6 = BatchNormalization()(conv6)
     conv6 = Conv2D(256, (3,3), activation='relu', padding='same')(conv6)
-    conv6 = BatchNormalization()(conv6)
-    conv6 = Conv2D(256, (3,3), activation='relu', padding='same')(conv6)
-    conv6 = BatchNormalization()(conv6)
+    # conv6 = BatchNormalization()(conv6)
 
     conv7 = concatenate([Conv2DTranspose(128, (2,2), strides=(2,2), padding='same')(conv6), conv3])
+    drop7 = Dropout(rate=0.5)(conv7)
+    conv7 = Conv2D(128, (3,3), activation='relu', padding='same')(drop7)
+    # conv7 = BatchNormalization()(conv7)
     conv7 = Conv2D(128, (3,3), activation='relu', padding='same')(conv7)
-    conv7 = BatchNormalization()(conv7)
-    conv7 = Conv2D(128, (3,3), activation='relu', padding='same')(conv7)
-    conv7 = BatchNormalization()(conv7)
+    # conv7 = BatchNormalization()(conv7)
 
     conv8 = concatenate([Conv2DTranspose(64, (2,2), strides=(2,2), padding='same')(conv7), conv2])
+    drop8 = Dropout(rate=0.5)(conv8)
+    conv8 = Conv2D(64, (3,3), activation='relu', padding='same')(drop8)
+    # conv8 = BatchNormalization()(conv8)
     conv8 = Conv2D(64, (3,3), activation='relu', padding='same')(conv8)
-    conv8 = BatchNormalization()(conv8)
-    conv8 = Conv2D(64, (3,3), activation='relu', padding='same')(conv8)
-    conv8 = BatchNormalization()(conv8)
+    # conv8 = BatchNormalization()(conv8)
 
     conv9 = concatenate([Conv2DTranspose(32, (2,2), strides=(2,2), padding='same')(conv8), conv1])
+    drop9 = Dropout(rate=0.5)(conv9)
+    conv9 = Conv2D(32, (3,3), activation='relu', padding='same')(drop9)
+    # conv9 = BatchNormalization()(conv9)
     conv9 = Conv2D(32, (3,3), activation='relu', padding='same')(conv9)
-    conv9 = BatchNormalization()(conv9)
-    conv9 = Conv2D(32, (3,3), activation='relu', padding='same')(conv9)
-    conv9 = BatchNormalization()(conv9)
+    # conv9 = BatchNormalization()(conv9)
 
     output = Conv2D(1, (1,1), activation='sigmoid')(conv9)
 
@@ -95,7 +102,7 @@ def build_net(img_width, img_height, batch_size, learning_rate):
     return model
 
 def preprocess(im):
-    im_arr = np.asarray(im.resize((img_width, img_height)))
+    im_arr = np.asarray(im.resize((IMG_WIDTH, IMG_HEIGHT)))
     return im_arr
 
 def augment(img, label):
@@ -153,12 +160,10 @@ def train(learning_rate, epochs, batch_size):
     
     gen = get_batches(batch_size)
     val = get_batches(batch_size, train=False)
-    model = build_net(img_width, img_height, batch_size, learning_rate)
+    model = build_net(IMG_WIDTH, IMG_HEIGHT, batch_size, learning_rate)
     checkpoint = ModelCheckpoint('model_weights.hd5', monitor='val_loss')
     model.fit_generator(gen, epochs=epochs, steps_per_epoch=int(math.ceil(train_len/batch_size)),
                         validation_data=val, validation_steps=int(math.ceil(test_len/batch_size)), 
                         verbose=1, callbacks=[checkpoint])
 
-train(1e-3, 10, 32)
-train(1e-4, 10, 32)
-train(1e-5, 10, 32)
+if __name__ == '__main__': train(1e-3, 120, 32)
