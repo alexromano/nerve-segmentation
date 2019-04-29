@@ -35,8 +35,8 @@ def dice_loss(y, y_pred):
     return -tf.log(dice(y, y_pred))
 
 # Build U-Net/FCN style model
-def build_net(img_width, img_height, batch_size, learning_rate):
-    input_images = Input(shape=(img_width,img_height,1), name='input')
+def build_net(image_width, image_height, batch_size, learning_rate):
+    input_images = Input(shape=(image_width, image_height, 1), name='input')
     conv1 = Conv2D(32, (3,3), activation='relu', padding='same')(input_images)
     conv1 = BatchNormalization()(conv1)
     conv1 = Conv2D(32, (3,3), activation='relu', padding='same')(conv1)
@@ -156,14 +156,42 @@ def get_batches(batch_size, train=True):
 
             yield ims, lbls
     
+def get_train_data():
+    print("loading training images")
+    files = np.array(os.listdir("ultrasound-nerve-segmentation/train"))
+    image_names = files[np.where(np.char.find(files, '_mask')<0)]
+    splitfile = np.vectorize(lambda x: os.path.splitext(x)[0])
+    image_names = splitfile(image_names)
+    
+    train_images = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
+    train_masks = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
+    for i in range(len(train_names)):
+        im = Image.open("ultrasound-nerve-segmentation/train/"+train_names[i]+".tif")
+        mask = Image.open("ultrasound-nerve-segmentation/train/"+train_names[i]+"_mask.tif")
+        # TODO: try chaning this to cv2.resize and see?
+        im_arr = np.array(im.resize((IMG_WIDTH, IMG_HEIGHT)))
+        mask_arr = np.array(mask.resize((IMG_WIDTH, IMG_HEIGHT)))
+        train_images[i] = im_arr
+        train_masks[i] = mask_arr
+    
+    mean = np.mean(train_images)
+    std = np.std(train_images)
+    train_images -= mean
+    train_images /= std
+    train_masks /= 255.0 
+    return np.expand_dims(train_images, axis=3), np.expand_dims(train_masks, axis=3)
+    
 def train(learning_rate, epochs, batch_size):
     
-    gen = get_batches(batch_size)
-    val = get_batches(batch_size, train=False)
+    # gen = get_batches(batch_size)
+    # val = get_batches(batch_size, train=False)
+    train_images, train_masks = get_train_data()
     model = build_net(IMG_WIDTH, IMG_HEIGHT, batch_size, learning_rate)
-    checkpoint = ModelCheckpoint('model_weights.hd5', monitor='val_loss')
-    model.fit_generator(gen, epochs=epochs, steps_per_epoch=int(math.ceil(train_len/batch_size)),
-                        validation_data=val, validation_steps=int(math.ceil(test_len/batch_size)), 
-                        verbose=1, callbacks=[checkpoint])
+    checkpoint = ModelCheckpoint('model_weights_zscored.hd5', monitor='val_loss')
+    # model.fit_generator(gen, epochs=epochs, steps_per_epoch=int(math.ceil(train_len/batch_size)),
+    #                     validation_data=val, validation_steps=int(math.ceil(test_len/batch_size)), 
+    #                     verbose=1, callbacks=[checkpoint])
+    model.fit(train_images, train_masks, batch_size=batch_size, epochs=epochs, verbose=1, callbacks=[checkpoint], 
+        validation_split=0.1)
 
-if __name__ == '__main__': train(1e-3, 120, 32)
+if __name__ == '__main__': train(1e-3, 50, 32)
