@@ -8,18 +8,9 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 import tensorflow.keras.backend as K
 from tensorflow.keras.layers import Input, Conv2D, Conv2DTranspose, MaxPooling2D, concatenate, BatchNormalization, Dropout
 from tensorflow.keras.optimizers import Adam
+from keras.preprocessing.image import ImageDataGenerator
 import math
 import cv2
-
-files = os.listdir("ultrasound-nerve-segmentation/train")
-image_names = []
-for f in files:
-    if '_mask' not in f:
-        image_names.append(os.path.splitext(f)[0])
-        
-train_names, test_names = train_test_split(image_names, test_size=0.1)
-train_len = len(train_names)
-test_len = len(test_names)
 
 ORIGINAL_WIDTH = 420
 ORIGINAL_HEIGHT = 580
@@ -100,74 +91,19 @@ def build_net(image_width, image_height, batch_size, learning_rate):
     model.compile(optimizer=Adam(lr=learning_rate), loss=dice_loss, metrics=[dice])
     
     return model
-
-def preprocess(im):
-    im_arr = np.asarray(im.resize((IMG_WIDTH, IMG_HEIGHT)))
-    return im_arr
-
-def augment(img, label):
-    #flip h
-    flipped_h = np.flip(img, axis=0)
-    flipped_h_lb = np.flip(label, axis=0)
-    #flip v
-    flipped_v = np.flip(img, axis=1)
-    flipped_v_lb = np.flip(label, axis=1)
-    #rotate
-    rotate_90 = np.rot90(img)
-    rotate_90_lb = np.rot90(label)
-    rotate_180 = np.rot90(rotate_90)
-    rotate_180_lb = np.rot90(rotate_90_lb)
-    rotate_270 = np.rot90(rotate_180)
-    rotate_270_lb = np.rot90(rotate_180_lb)
-    aug_ims = np.array([flipped_h, flipped_v, rotate_90, rotate_180, rotate_270])
-    aug_lbs = np.array([flipped_h_lb, flipped_v_lb, rotate_90_lb, rotate_180_lb, rotate_270_lb])
-    return (aug_ims, aug_lbs)
-
-def get_batches(batch_size, train=True):
-    filenames = None
-    if train: filenames = train_names
-    else: filenames = test_names
-    while True:
-        for i in range(0, len(filenames), batch_size):
-            images = []
-            labels = []
-            for img_name in filenames[i:i+batch_size]:
-                im = Image.open("ultrasound-nerve-segmentation/train/"+img_name+".tif")
-                lb = Image.open("ultrasound-nerve-segmentation/train/"+img_name+"_mask.tif")
-                im_arr = preprocess(im)
-                lb_arr = preprocess(lb)
-                images.append(im_arr)
-                labels.append(lb_arr)
-                
-                if train:
-                    aug_ims, aug_lbs = augment(im_arr, lb_arr)
-                    for im in aug_ims:
-                        images.append(im)
-                    for lb in aug_lbs:
-                        labels.append(lb)
-            ims = np.expand_dims(np.array(images, dtype='float32'), axis=3)
-            lbls = np.expand_dims(np.array(labels, dtype='float32'), axis=3)
-
-            mean = np.mean(ims)
-            std = np.std(ims)
-            ims -= mean
-            ims /= std
-            lbls /= 255.0
-
-            yield ims, lbls
     
 def get_train_data():
     print("loading training images")
-    files = np.array(os.listdir("ultrasound-nerve-segmentation/train"))
-    image_names = files[np.where(np.char.find(files, '_mask')<0)]
+    files = np.array(os.listdir("ultrasound-nerve-segmentation/train/train"))
+    # image_names = files[np.where(np.char.find(files, '_mask')<0)]
     splitfile = np.vectorize(lambda x: os.path.splitext(x)[0])
-    image_names = splitfile(image_names)
+    image_names = splitfile(files)
     
     train_images = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
     train_masks = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
-    for i in range(len(train_names)):
-        im = Image.open("ultrasound-nerve-segmentation/train/"+train_names[i]+".tif")
-        mask = Image.open("ultrasound-nerve-segmentation/train/"+train_names[i]+"_mask.tif")
+    for i in range(len(image_names)):
+        im = Image.open("ultrasound-nerve-segmentation/train/train/"+image_names[i]+".tif")
+        mask = Image.open("ultrasound-nerve-segmentation/masks/masks/"+image_names[i]+"_mask.tif")
         # TODO: try chaning this to cv2.resize and see?
         im_arr = np.array(im.resize((IMG_WIDTH, IMG_HEIGHT)))
         mask_arr = np.array(mask.resize((IMG_WIDTH, IMG_HEIGHT)))
@@ -182,16 +118,71 @@ def get_train_data():
     return np.expand_dims(train_images, axis=3), np.expand_dims(train_masks, axis=3)
     
 def train(learning_rate, epochs, batch_size):
-    
-    # gen = get_batches(batch_size)
-    # val = get_batches(batch_size, train=False)
     train_images, train_masks = get_train_data()
+    train_len = len(train_images)
+
+    image_datagen = ImageDataGenerator(featurewise_center=True,
+    featurewise_std_normalization=True,
+    rotation_range=30,
+    width_shift_range=0.1,
+    height_shift_range=0.1,
+    zoom_range=0.1,
+    horizontal_flip=True,
+    validation_split=0.15)
+
+    mask_datagen = ImageDataGenerator(featurewise_center=False,
+    featurewise_std_normalization=False,
+    rescale=1/255.0,
+    rotation_range=30,
+    width_shift_range=0.1,
+    height_shift_range=0.1,
+    zoom_range=0.1,
+    horizontal_flip=True,
+    validation_split=0.15)
+
+    seed = 1
+    image_datagen.fit(train_images, augment=True, seed=seed)
+    mask_datagen.fit(train_masks, augment=True, seed=seed)
+
+    image_generator = image_datagen.flow_from_directory(
+        'ultrasound-nerve-segmentation/train',
+        target_size=(128,128),
+        color_mode='grayscale',
+        class_mode=None,
+        seed=seed, subset='training')
+
+    mask_generator = mask_datagen.flow_from_directory(
+        'ultrasound-nerve-segmentation/masks',
+        target_size=(128,128),
+        color_mode='grayscale',
+        class_mode=None,
+        seed=seed, subset='training')
+
+    image_val_gen = image_datagen.flow_from_directory(
+        'ultrasound-nerve-segmentation/train',
+        target_size=(128,128),
+        color_mode='grayscale',
+        class_mode=None,
+        seed=seed, subset='validation') 
+
+    mask_val_gen = mask_datagen.flow_from_directory(
+        'ultrasound-nerve-segmentation/masks',
+        target_size=(128,128),
+        color_mode='grayscale',
+        class_mode=None,
+        seed=seed, subset='validation') 
+
+    # combine generators into one which yields image and masks
+    train_generator = zip(image_generator, mask_generator)
+    validation_generator = zip(image_val_gen, mask_val_gen)
+    
     model = build_net(IMG_WIDTH, IMG_HEIGHT, batch_size, learning_rate)
     checkpoint = ModelCheckpoint('model_weights_zscored.hd5', monitor='val_loss')
-    # model.fit_generator(gen, epochs=epochs, steps_per_epoch=int(math.ceil(train_len/batch_size)),
-    #                     validation_data=val, validation_steps=int(math.ceil(test_len/batch_size)), 
-    #                     verbose=1, callbacks=[checkpoint])
-    model.fit(train_images, train_masks, batch_size=batch_size, epochs=epochs, verbose=1, callbacks=[checkpoint], 
-        validation_split=0.1)
+    model.fit_generator(
+        train_generator,
+        steps_per_epoch=train_len // batch_size,
+        epochs=50,
+        validation_data= validation_generator, validation_steps=train_len*0.15 // batch_size,
+        verbose=1, callbacks=[checkpoint])
 
-if __name__ == '__main__': train(1e-3, 50, 32)
+if __name__ == '__main__': train(1e-3, 50, 8)
