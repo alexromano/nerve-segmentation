@@ -8,18 +8,9 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 import tensorflow.keras.backend as K
 from tensorflow.keras.layers import Input, Conv2D, Conv2DTranspose, MaxPooling2D, concatenate, BatchNormalization, Dropout
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import Callback
 import math
 import cv2
-
-files = os.listdir("ultrasound-nerve-segmentation/train")
-image_names = []
-for f in files:
-    if '_mask' not in f:
-        image_names.append(os.path.splitext(f)[0])
-        
-train_names, test_names = train_test_split(image_names, test_size=0.1)
-train_len = len(train_names)
-test_len = len(test_names)
 
 ORIGINAL_WIDTH = 420
 ORIGINAL_HEIGHT = 580
@@ -132,8 +123,8 @@ def get_batches(batch_size, train=True):
             images = []
             labels = []
             for img_name in filenames[i:i+batch_size]:
-                im = Image.open("ultrasound-nerve-segmentation/train/"+img_name+".tif")
-                lb = Image.open("ultrasound-nerve-segmentation/train/"+img_name+"_mask.tif")
+                im = Image.open("ultrasound-nerve-segmentation/train/train/"+img_name+".tif")
+                lb = Image.open("ultrasound-nerve-segmentation/train/train/"+img_name+"_mask.tif")
                 im_arr = preprocess(im)
                 lb_arr = preprocess(lb)
                 images.append(im_arr)
@@ -158,21 +149,27 @@ def get_batches(batch_size, train=True):
     
 def get_train_data():
     print("loading training images")
-    files = np.array(os.listdir("ultrasound-nerve-segmentation/train"))
-    image_names = files[np.where(np.char.find(files, '_mask')<0)]
+    files = np.array(os.listdir("ultrasound-nerve-segmentation/train/train"))
+    # image_names = files[np.where(np.char.find(files, '_mask')<0)]
     splitfile = np.vectorize(lambda x: os.path.splitext(x)[0])
-    image_names = splitfile(image_names)
+    image_names = splitfile(files)
     
-    train_images = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
-    train_masks = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
-    for i in range(len(train_names)):
-        im = Image.open("ultrasound-nerve-segmentation/train/"+train_names[i]+".tif")
-        mask = Image.open("ultrasound-nerve-segmentation/train/"+train_names[i]+"_mask.tif")
+    train_images = np.zeros((image_names.shape[0]*6, IMG_HEIGHT, IMG_WIDTH))
+    train_masks = np.zeros((image_names.shape[0]*6, IMG_HEIGHT, IMG_WIDTH))
+    for i in range(0, len(image_names)):
+        im = Image.open("ultrasound-nerve-segmentation/train/train/"+image_names[i]+".tif")
+        mask = Image.open("ultrasound-nerve-segmentation/masks/masks/"+image_names[i]+"_mask.tif")
         # TODO: try chaning this to cv2.resize and see?
         im_arr = np.array(im.resize((IMG_WIDTH, IMG_HEIGHT)))
         mask_arr = np.array(mask.resize((IMG_WIDTH, IMG_HEIGHT)))
-        train_images[i] = im_arr
-        train_masks[i] = mask_arr
+        aug_ims, aug_masks = augment(im_arr, mask_arr)
+
+        j = i * 6 
+        train_images[j] = im_arr
+        train_masks[j] = mask_arr
+        train_images[j+1:j+6] = aug_ims
+        train_masks[j+1:j+6] = aug_masks
+        
     
     mean = np.mean(train_images)
     std = np.std(train_images)
@@ -182,16 +179,27 @@ def get_train_data():
     return np.expand_dims(train_images, axis=3), np.expand_dims(train_masks, axis=3)
     
 def train(learning_rate, epochs, batch_size):
-    
-    # gen = get_batches(batch_size)
-    # val = get_batches(batch_size, train=False)
+
     train_images, train_masks = get_train_data()
+
     model = build_net(IMG_WIDTH, IMG_HEIGHT, batch_size, learning_rate)
     checkpoint = ModelCheckpoint('model_weights_zscored.hd5', monitor='val_loss')
-    # model.fit_generator(gen, epochs=epochs, steps_per_epoch=int(math.ceil(train_len/batch_size)),
-    #                     validation_data=val, validation_steps=int(math.ceil(test_len/batch_size)), 
-    #                     verbose=1, callbacks=[checkpoint])
-    model.fit(train_images, train_masks, batch_size=batch_size, epochs=epochs, verbose=1, callbacks=[checkpoint], 
+    history = LossHistory()
+
+    model.fit(train_images, train_masks, batch_size=batch_size, epochs=epochs, verbose=1, callbacks=[checkpoint, history], 
         validation_split=0.1)
 
-if __name__ == '__main__': train(1e-3, 50, 32)
+class LossHistory(Callback):
+    def on_train_begin(self, logs={}):
+        self.train_losses = []
+        self.val_losses = []
+        self.dices = []
+        self.val_dices = []
+
+    def on_batch_end(self, batch, logs={}):
+        self.train_losses.append(logs.get('loss'))
+        self.val_losses.append(logs.get('val_loss'))
+        self.dices.append(logs.get("dice"))
+        self.val_dices.append(logs.get("val_dice"))
+
+if __name__ == '__main__': train(1e-3, 50, 8)
