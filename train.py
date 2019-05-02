@@ -58,29 +58,29 @@ def build_net(image_width, image_height, batch_size, learning_rate):
     conv5 = BatchNormalization()(conv5)
 
     conv6 = concatenate([Conv2DTranspose(256, (2,2), strides=(2,2), padding='same')(conv5), conv4])
-    drop6 = Dropout(rate=0.5)(conv6)
-    conv6 = Conv2D(256, (3,3), activation='relu', padding='same')(drop6)
+    #drop6 = Dropout(rate=0.5)(conv6)
+    conv6 = Conv2D(256, (3,3), activation='relu', padding='same')(conv6)
     # conv6 = BatchNormalization()(conv6)
     conv6 = Conv2D(256, (3,3), activation='relu', padding='same')(conv6)
     # conv6 = BatchNormalization()(conv6)
 
     conv7 = concatenate([Conv2DTranspose(128, (2,2), strides=(2,2), padding='same')(conv6), conv3])
-    drop7 = Dropout(rate=0.5)(conv7)
-    conv7 = Conv2D(128, (3,3), activation='relu', padding='same')(drop7)
+    #drop7 = Dropout(rate=0.5)(conv7)
+    conv7 = Conv2D(128, (3,3), activation='relu', padding='same')(conv7)
     # conv7 = BatchNormalization()(conv7)
     conv7 = Conv2D(128, (3,3), activation='relu', padding='same')(conv7)
     # conv7 = BatchNormalization()(conv7)
 
     conv8 = concatenate([Conv2DTranspose(64, (2,2), strides=(2,2), padding='same')(conv7), conv2])
-    drop8 = Dropout(rate=0.5)(conv8)
-    conv8 = Conv2D(64, (3,3), activation='relu', padding='same')(drop8)
+    #drop8 = Dropout(rate=0.5)(conv8)
+    conv8 = Conv2D(64, (3,3), activation='relu', padding='same')(conv8)
     # conv8 = BatchNormalization()(conv8)
     conv8 = Conv2D(64, (3,3), activation='relu', padding='same')(conv8)
     # conv8 = BatchNormalization()(conv8)
 
     conv9 = concatenate([Conv2DTranspose(32, (2,2), strides=(2,2), padding='same')(conv8), conv1])
-    drop9 = Dropout(rate=0.5)(conv9)
-    conv9 = Conv2D(32, (3,3), activation='relu', padding='same')(drop9)
+    #drop9 = Dropout(rate=0.5)(conv9)
+    conv9 = Conv2D(32, (3,3), activation='relu', padding='same')(conv9)
     # conv9 = BatchNormalization()(conv9)
     conv9 = Conv2D(32, (3,3), activation='relu', padding='same')(conv9)
     # conv9 = BatchNormalization()(conv9)
@@ -100,25 +100,25 @@ def get_train_data():
     image_names = splitfile(files)
     
     train_images = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
-    train_masks = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
+#    train_masks = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
     for i in range(len(image_names)):
         im = Image.open("ultrasound-nerve-segmentation/train/train/"+image_names[i]+".tif")
-        mask = Image.open("ultrasound-nerve-segmentation/masks/masks/"+image_names[i]+"_mask.tif")
+ #       mask = Image.open("ultrasound-nerve-segmentation/masks/masks/"+image_names[i]+"_mask.tif")
         # TODO: try chaning this to cv2.resize and see?
         im_arr = np.array(im.resize((IMG_WIDTH, IMG_HEIGHT)))
-        mask_arr = np.array(mask.resize((IMG_WIDTH, IMG_HEIGHT)))
+  #      mask_arr = np.array(mask.resize((IMG_WIDTH, IMG_HEIGHT)))
         train_images[i] = im_arr
-        train_masks[i] = mask_arr
+   #     train_masks[i] = mask_arr
     
-    mean = np.mean(train_images)
-    std = np.std(train_images)
-    train_images -= mean
-    train_images /= std
-    train_masks /= 255.0 
-    return np.expand_dims(train_images, axis=3), np.expand_dims(train_masks, axis=3)
+   # mean = np.mean(train_images)
+   # std = np.std(train_images)
+   # train_images -= mean
+   # train_images /= std
+   # train_masks /= 255.0 
+    return np.expand_dims(train_images, axis=3)#, np.expand_dims(train_masks, axis=3)
     
 def train(learning_rate, epochs, batch_size):
-    train_images, train_masks = get_train_data()
+    train_images = get_train_data()
     train_len = len(train_images)
 
     image_datagen = ImageDataGenerator(featurewise_center=True,
@@ -130,8 +130,7 @@ def train(learning_rate, epochs, batch_size):
     horizontal_flip=True,
     validation_split=0.15)
 
-    mask_datagen = ImageDataGenerator(featurewise_center=False,
-    featurewise_std_normalization=False,
+    mask_datagen = ImageDataGenerator(
     rescale=1/255.0,
     rotation_range=30,
     width_shift_range=0.1,
@@ -142,7 +141,7 @@ def train(learning_rate, epochs, batch_size):
 
     seed = 1
     image_datagen.fit(train_images, augment=True, seed=seed)
-    mask_datagen.fit(train_masks, augment=True, seed=seed)
+    #mask_datagen.fit(train_masks, augment=True, seed=seed)
 
     image_generator = image_datagen.flow_from_directory(
         'ultrasound-nerve-segmentation/train',
@@ -171,18 +170,24 @@ def train(learning_rate, epochs, batch_size):
         color_mode='grayscale',
         class_mode=None,
         seed=seed, subset='validation') 
-
+    print('zipping')
     # combine generators into one which yields image and masks
-    train_generator = zip(image_generator, mask_generator)
-    validation_generator = zip(image_val_gen, mask_val_gen)
+    train_generator = combine_generator(image_generator, mask_generator)
+    print('zip2')
+    validation_generator = combine_generator(image_val_gen, mask_val_gen)
     
+    print('training')
     model = build_net(IMG_WIDTH, IMG_HEIGHT, batch_size, learning_rate)
     checkpoint = ModelCheckpoint('model_weights_zscored.hd5', monitor='val_loss')
     model.fit_generator(
         train_generator,
-        steps_per_epoch=train_len // batch_size,
+        steps_per_epoch=149,
         epochs=50,
-        validation_data= validation_generator, validation_steps=train_len*0.15 // batch_size,
+        validation_data=validation_generator, validation_steps=26,
         verbose=1, callbacks=[checkpoint])
 
-if __name__ == '__main__': train(1e-3, 50, 8)
+def combine_generator(gen1, gen2):
+    while True:
+         yield(gen1.next(), gen2.next()) 
+                    
+if __name__ == '__main__': train(1e-4, 50, 32)
