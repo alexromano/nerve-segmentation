@@ -114,23 +114,20 @@ def augment(img, label):
     aug_lbs = np.array([flipped_h_lb, flipped_v_lb, rotate_90_lb, rotate_180_lb, rotate_270_lb])
     return (aug_ims, aug_lbs)
 
-def get_batches(batch_size, train=True):
-    filenames = None
-    if train: filenames = train_names
-    else: filenames = test_names
+def get_batches(data, batch_size, train_mean, train_std, train=True):
     while True:
-        for i in range(0, len(filenames), batch_size):
+        for i in range(0, len(data), batch_size):
             images = []
             labels = []
-            for img_name in filenames[i:i+batch_size]:
+            for img_name in data[i:i+batch_size]:
                 im = Image.open("ultrasound-nerve-segmentation/train/train/"+img_name+".tif")
-                lb = Image.open("ultrasound-nerve-segmentation/train/train/"+img_name+"_mask.tif")
+                lb = Image.open("ultrasound-nerve-segmentation/masks/masks/"+img_name+"_mask.tif")
                 im_arr = preprocess(im)
                 lb_arr = preprocess(lb)
                 images.append(im_arr)
                 labels.append(lb_arr)
                 
-                if train:
+                if train: #and np.any(lb > 0.5):
                     aug_ims, aug_lbs = augment(im_arr, lb_arr)
                     for im in aug_ims:
                         images.append(im)
@@ -139,55 +136,62 @@ def get_batches(batch_size, train=True):
             ims = np.expand_dims(np.array(images, dtype='float32'), axis=3)
             lbls = np.expand_dims(np.array(labels, dtype='float32'), axis=3)
 
-            mean = np.mean(ims)
-            std = np.std(ims)
-            ims -= mean
-            ims /= std
+            ims -= train_mean
+            ims /= train_std
             lbls /= 255.0
 
             yield ims, lbls
     
-def get_train_data():
+def get_train_data(image_names):
     print("loading training images")
-    files = np.array(os.listdir("ultrasound-nerve-segmentation/train/train"))
-    # image_names = files[np.where(np.char.find(files, '_mask')<0)]
-    splitfile = np.vectorize(lambda x: os.path.splitext(x)[0])
-    image_names = splitfile(files)
     
-    train_images = np.zeros((image_names.shape[0]*6, IMG_HEIGHT, IMG_WIDTH))
-    train_masks = np.zeros((image_names.shape[0]*6, IMG_HEIGHT, IMG_WIDTH))
+    train_images = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
+    train_masks = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
     for i in range(0, len(image_names)):
         im = Image.open("ultrasound-nerve-segmentation/train/train/"+image_names[i]+".tif")
         mask = Image.open("ultrasound-nerve-segmentation/masks/masks/"+image_names[i]+"_mask.tif")
         # TODO: try chaning this to cv2.resize and see?
         im_arr = np.array(im.resize((IMG_WIDTH, IMG_HEIGHT)))
         mask_arr = np.array(mask.resize((IMG_WIDTH, IMG_HEIGHT)))
-        aug_ims, aug_masks = augment(im_arr, mask_arr)
+        # aug_ims, aug_masks = augment(im_arr, mask_arr)
 
-        j = i * 6 
-        train_images[j] = im_arr
-        train_masks[j] = mask_arr
-        train_images[j+1:j+6] = aug_ims
-        train_masks[j+1:j+6] = aug_masks
+        # j = i * 6 
+        train_images[i] = im_arr
+        train_masks[i] = mask_arr
+        # train_images[j+1:j+6] = aug_ims
+        # train_masks[j+1:j+6] = aug_masks
         
     
-    mean = np.mean(train_images)
-    std = np.std(train_images)
-    train_images -= mean
-    train_images /= std
-    train_masks /= 255.0 
+    # mean = np.mean(train_images)
+    # std = np.std(train_images)
+    # train_images -= mean
+    # train_images /= std
+    # train_masks /= 255.0 
     return np.expand_dims(train_images, axis=3), np.expand_dims(train_masks, axis=3)
     
 def train(learning_rate, epochs, batch_size):
+    files = np.array(os.listdir("ultrasound-nerve-segmentation/train/train"))
+    # image_names = files[np.where(np.char.find(files, '_mask')<0)]
+    splitfile = np.vectorize(lambda x: os.path.splitext(x)[0])
+    image_names = splitfile(files)
 
-    train_images, train_masks = get_train_data()
+    train_images, train_masks = get_train_data(image_names)
+    train_mean = np.mean(train_images)
+    train_std = np.std(train_images)
 
     model = build_net(IMG_WIDTH, IMG_HEIGHT, batch_size, learning_rate)
     checkpoint = ModelCheckpoint('model_weights_zscored.hd5', monitor='val_loss')
     history = LossHistory()
 
-    model.fit(train_images, train_masks, batch_size=batch_size, epochs=epochs, verbose=1, callbacks=[checkpoint, history], 
-        validation_split=0.1)
+    train_names, val_names = train_test_split(image_names, test_size=0.15)
+
+    train_gen = get_batches(train_names, batch_size, train_mean, train_std)
+    val_gen = get_batches(val_names, batch_size, train_mean, train_std)
+
+    model.fit_generator(train_gen, steps_per_epoch=math.ceil(len(train_names)/6), epochs=50, verbose=1, callbacks=[checkpoint, history], 
+        validation_data=val_gen, validation_steps=math.ceil(len(val_names)))
+    # model.fit(train_images, train_masks, batch_size=batch_size, epochs=epochs, verbose=1, callbacks=[checkpoint, history], 
+    #     validation_split=0.1)
 
 class LossHistory(Callback):
     def on_train_begin(self, logs={}):
@@ -202,4 +206,4 @@ class LossHistory(Callback):
         self.dices.append(logs.get("dice"))
         self.val_dices.append(logs.get("val_dice"))
 
-if __name__ == '__main__': train(1e-3, 50, 8)
+if __name__ == '__main__': train(1e-3, 50, 1)
