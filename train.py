@@ -18,69 +18,72 @@ IMG_WIDTH = 128
 IMG_HEIGHT = 128
 
 # a smoothed version of dice coefficient
-def dice(y, y_pred):
-    intersection = K.sum(K.flatten(y) * K.flatten(y_pred))
-    return (2.0 * intersection + 1) / (K.sum(y) + K.sum(y_pred) + 1)
+def dice(y_true, y_pred):
+    y_true_f = K.flatten(y_true)
+    y_pred_f = K.flatten(y_pred)
+    intersection = K.sum(y_true_f * y_pred_f)
+    return (2. * intersection + 1.0) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1.0)
 
-def dice_loss(y, y_pred):
-    return -tf.log(dice(y, y_pred))
+
+def dice_loss(y_true, y_pred):
+    return -dice(y_true, y_pred)
 
 # Build U-Net/FCN style model
 def build_net(image_width, image_height, batch_size, learning_rate):
     input_images = Input(shape=(image_width, image_height, 1), name='input')
     conv1 = Conv2D(32, (3,3), activation='relu', padding='same')(input_images)
-    conv1 = BatchNormalization()(conv1)
+    # conv1 = BatchNormalization()(conv1)
     conv1 = Conv2D(32, (3,3), activation='relu', padding='same')(conv1)
-    conv1 = BatchNormalization()(conv1)
+    # conv1 = BatchNormalization()(conv1)
     pool1 = MaxPooling2D(2)(conv1)
 
     conv2 = Conv2D(64, (3,3), activation='relu', padding='same')(pool1)
-    conv2 = BatchNormalization()(conv2)
+    # conv2 = BatchNormalization()(conv2)
     conv2 = Conv2D(64, (3,3), activation='relu', padding='same')(conv2)
-    conv2 = BatchNormalization()(conv2)
+    # conv2 = BatchNormalization()(conv2)
     pool2 = MaxPooling2D(2)(conv2)
 
     conv3 = Conv2D(128, (3,3), activation='relu', padding='same')(pool2)
-    conv3 = BatchNormalization()(conv3)
+    # conv3 = BatchNormalization()(conv3)
     conv3 = Conv2D(128, (3,3), activation='relu', padding='same')(conv3)
-    conv3 = BatchNormalization()(conv3)
+    # conv3 = BatchNormalization()(conv3)
     pool3 = MaxPooling2D(2)(conv3)
 
     conv4 = Conv2D(256, (3,3), activation='relu', padding='same')(pool3)
-    conv4 = BatchNormalization()(conv4)
+    # conv4 = BatchNormalization()(conv4)
     conv4 = Conv2D(256, (3,3), activation='relu', padding='same')(conv4)
-    conv4 = BatchNormalization()(conv4)
+    # conv4 = BatchNormalization()(conv4)
     pool4 = MaxPooling2D(2)(conv4)
 
     conv5 = Conv2D(512, (3,3), activation='relu', padding='same')(pool4)
-    conv5 = BatchNormalization()(conv5)
+    # conv5 = BatchNormalization()(conv5)
     conv5 = Conv2D(512, (3,3), activation='relu', padding='same')(conv5)
-    conv5 = BatchNormalization()(conv5)
+    # conv5 = BatchNormalization()(conv5)
 
     conv6 = concatenate([Conv2DTranspose(256, (2,2), strides=(2,2), padding='same')(conv5), conv4])
-    drop6 = Dropout(rate=0.5)(conv6)
-    conv6 = Conv2D(256, (3,3), activation='relu', padding='same')(drop6)
+    # conv6 = Dropout(rate=0.5)(conv6)
+    conv6 = Conv2D(256, (3,3), activation='relu', padding='same')(conv6)
     # conv6 = BatchNormalization()(conv6)
     conv6 = Conv2D(256, (3,3), activation='relu', padding='same')(conv6)
     # conv6 = BatchNormalization()(conv6)
 
     conv7 = concatenate([Conv2DTranspose(128, (2,2), strides=(2,2), padding='same')(conv6), conv3])
-    drop7 = Dropout(rate=0.5)(conv7)
-    conv7 = Conv2D(128, (3,3), activation='relu', padding='same')(drop7)
+    # conv7 = Dropout(rate=0.5)(conv7)
+    conv7 = Conv2D(128, (3,3), activation='relu', padding='same')(conv7)
     # conv7 = BatchNormalization()(conv7)
     conv7 = Conv2D(128, (3,3), activation='relu', padding='same')(conv7)
     # conv7 = BatchNormalization()(conv7)
 
     conv8 = concatenate([Conv2DTranspose(64, (2,2), strides=(2,2), padding='same')(conv7), conv2])
-    drop8 = Dropout(rate=0.5)(conv8)
-    conv8 = Conv2D(64, (3,3), activation='relu', padding='same')(drop8)
+    # conv8 = Dropout(rate=0.5)(conv8)
+    conv8 = Conv2D(64, (3,3), activation='relu', padding='same')(conv8)
     # conv8 = BatchNormalization()(conv8)
     conv8 = Conv2D(64, (3,3), activation='relu', padding='same')(conv8)
     # conv8 = BatchNormalization()(conv8)
 
     conv9 = concatenate([Conv2DTranspose(32, (2,2), strides=(2,2), padding='same')(conv8), conv1])
-    drop9 = Dropout(rate=0.5)(conv9)
-    conv9 = Conv2D(32, (3,3), activation='relu', padding='same')(drop9)
+    # conv9 = Dropout(rate=0.5)(conv9)
+    conv9 = Conv2D(32, (3,3), activation='relu', padding='same')(conv9)
     # conv9 = BatchNormalization()(conv9)
     conv9 = Conv2D(32, (3,3), activation='relu', padding='same')(conv9)
     # conv9 = BatchNormalization()(conv9)
@@ -162,36 +165,55 @@ def get_train_data(image_names):
         # train_masks[j+1:j+6] = aug_masks
         
     
-    # mean = np.mean(train_images)
-    # std = np.std(train_images)
-    # train_images -= mean
-    # train_images /= std
-    # train_masks /= 255.0 
+    mean = np.mean(train_images)
+    std = np.std(train_images)
+    train_images -= mean
+    train_images /= std
+    train_masks /= 255.0 
     return np.expand_dims(train_images, axis=3), np.expand_dims(train_masks, axis=3)
     
-def train(learning_rate, epochs, batch_size):
+def train(X, Y, learning_rate, epochs, batch_size):
+    model = build_net(IMG_WIDTH, IMG_HEIGHT, batch_size, learning_rate)
+    checkpoint = ModelCheckpoint('model_weights_overfit.hd5', monitor='val_loss')
+    history = LossHistory()
+    model.fit(X, Y, batch_size=batch_size, epochs=epochs, verbose=1, shuffle=True, validation_split=0.2, callbacks=[checkpoint, history])
+    return model
+
+def predict_and_score(image_names):
+    # get dice coeff
+    print("loading model and predicting")
+    X, _ = get_train_data(image_names)
+    # load model and predict on images
+    model = load_model('model_weights_overfit.hd5', compile=False)
+    img_masks = model.predict(X, batch_size=3, verbose=1)
+    # resize
+    masks_resized = np.zeros((img_masks.shape[0], ORIGINAL_HEIGHT, ORIGINAL_WIDTH))
+    for i in range(img_masks.shape[0]):
+        im_resized = np.array(cv2.resize(img_masks[i], (ORIGINAL_WIDTH, ORIGINAL_HEIGHT)))
+        masks_resized[i] = im_resized
+    print("Loading ground truth and dicing")
+    # load ground truth masks for these images
+    labels = np.zeros((len(X), ORIGINAL_WIDTH, ORIGINAL_HEIGHT))
+    for f in image_names:
+            im = Image.open("ultrasound-nerve-segmentation/masks/masks/"+f+ "_mask.tif")
+            labels[i] = np.array(im)
+
+    # get dice between ground truth and predicted
+    d = dice(labels, masks_resized)
+    import tensorflow as tf
+    print(tf.Session().run(d))
+
+def main():
     files = np.array(os.listdir("ultrasound-nerve-segmentation/train/train"))
     # image_names = files[np.where(np.char.find(files, '_mask')<0)]
     splitfile = np.vectorize(lambda x: os.path.splitext(x)[0])
     image_names = splitfile(files)
 
     train_images, train_masks = get_train_data(image_names)
-    train_mean = np.mean(train_images)
-    train_std = np.std(train_images)
 
-    model = build_net(IMG_WIDTH, IMG_HEIGHT, batch_size, learning_rate)
-    checkpoint = ModelCheckpoint('model_weights_zscored.hd5', monitor='val_loss')
-    history = LossHistory()
+    model = train(train_images, train_masks, 1e-5, 20, 32)
 
-    train_names, val_names = train_test_split(image_names, test_size=0.15)
-
-    train_gen = get_batches(train_names, batch_size, train_mean, train_std)
-    val_gen = get_batches(val_names, batch_size, train_mean, train_std)
-
-    model.fit_generator(train_gen, steps_per_epoch=math.ceil(len(train_names)/6), epochs=50, verbose=1, callbacks=[checkpoint, history], 
-        validation_data=val_gen, validation_steps=math.ceil(len(val_names)))
-    # model.fit(train_images, train_masks, batch_size=batch_size, epochs=epochs, verbose=1, callbacks=[checkpoint, history], 
-    #     validation_split=0.1)
+    # predict_and_score(image_names)
 
 class LossHistory(Callback):
     def on_train_begin(self, logs={}):
@@ -206,4 +228,4 @@ class LossHistory(Callback):
         self.dices.append(logs.get("dice"))
         self.val_dices.append(logs.get("val_dice"))
 
-if __name__ == '__main__': train(1e-3, 50, 1)
+if __name__ == '__main__': main()
