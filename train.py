@@ -3,6 +3,7 @@ from sklearn.model_selection import train_test_split
 import os
 from PIL import Image
 import tensorflow as tf
+import json
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.callbacks import ModelCheckpoint
 import tensorflow.keras.backend as K
@@ -23,7 +24,6 @@ def dice(y_true, y_pred):
     y_pred_f = K.flatten(y_pred)
     intersection = K.sum(y_true_f * y_pred_f)
     return (2. * intersection + 1.0) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1.0)
-
 
 def dice_loss(y_true, y_pred):
     return -dice(y_true, y_pred)
@@ -156,6 +156,8 @@ def get_train_data(image_names):
         # TODO: try chaning this to cv2.resize and see?
         im_arr = np.array(im.resize((IMG_WIDTH, IMG_HEIGHT)))
         mask_arr = np.array(mask.resize((IMG_WIDTH, IMG_HEIGHT)))
+        # if np.all(mask_arr < 0.5):
+        #     continue
         # aug_ims, aug_masks = augment(im_arr, mask_arr)
 
         # j = i * 6 
@@ -183,9 +185,8 @@ def predict_and_score(image_names):
     # get dice coeff
     print("loading model and predicting")
     X, _ = get_train_data(image_names)
-    # load model and predict on images
     model = load_model('model_weights_overfit.hd5', compile=False)
-    img_masks = model.predict(X, batch_size=3, verbose=1)
+    img_masks = model.predict(X, batch_size=256, verbose=1)
     # resize
     masks_resized = np.zeros((img_masks.shape[0], ORIGINAL_HEIGHT, ORIGINAL_WIDTH))
     for i in range(img_masks.shape[0]):
@@ -217,15 +218,23 @@ def main():
 
 class LossHistory(Callback):
     def on_train_begin(self, logs={}):
-        self.train_losses = []
+        self.train_losses =[]
         self.val_losses = []
         self.dices = []
         self.val_dices = []
+        open('metrics.json', 'w').close()
 
-    def on_batch_end(self, batch, logs={}):
-        self.train_losses.append(logs.get('loss'))
-        self.val_losses.append(logs.get('val_loss'))
-        self.dices.append(logs.get("dice"))
-        self.val_dices.append(logs.get("val_dice"))
+    def on_epoch_end(self, epoch, logs={}):
+        self.train_losses.append(str(logs.get('loss')))
+        self.val_losses.append(str(logs.get('val_loss')))
+        self.dices.append(str(logs.get("dice")))
+        self.val_dices.append(str(logs.get("val_dice")))
+        with open('metrics.json', 'w') as outfile:
+            json.dump({
+                "loss":self.train_losses, 
+                "val_loss":self.val_losses,
+                "dice": self.dices,
+                "val_dice":self.val_dices}, outfile)
+
 
 if __name__ == '__main__': main()
