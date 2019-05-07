@@ -35,7 +35,7 @@ def get_test_images():
 
 def get_predictions(images, ids):
     print("Loading model..")
-    model = load_model('model_weights_overfit.hd5', compile=False)
+    model = load_model('model_weights_augment.hd5', compile=False)
     img_masks = model.predict(images, batch_size=256, verbose=1)
 
     # crucial to sort predictions in order for the kaggle evaluation
