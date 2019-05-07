@@ -148,8 +148,8 @@ def get_batches(data, batch_size, train_mean, train_std, train=True):
 def get_train_data(image_names):
     print("loading training images")
     
-    train_images = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
-    train_masks = np.zeros((image_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
+    train_images = np.zeros((image_names.shape[0]*6, IMG_HEIGHT, IMG_WIDTH))
+    train_masks = np.zeros((image_names.shape[0]*6, IMG_HEIGHT, IMG_WIDTH))
     for i in range(0, len(image_names)):
         im = Image.open("ultrasound-nerve-segmentation/train/train/"+image_names[i]+".tif")
         mask = Image.open("ultrasound-nerve-segmentation/masks/masks/"+image_names[i]+"_mask.tif")
@@ -158,13 +158,13 @@ def get_train_data(image_names):
         mask_arr = np.array(mask.resize((IMG_WIDTH, IMG_HEIGHT)))
         # if np.all(mask_arr < 0.5):
         #     continue
-        # aug_ims, aug_masks = augment(im_arr, mask_arr)
+        aug_ims, aug_masks = augment(im_arr, mask_arr)
 
-        # j = i * 6 
+        j = i * 6 
         train_images[i] = im_arr
         train_masks[i] = mask_arr
-        # train_images[j+1:j+6] = aug_ims
-        # train_masks[j+1:j+6] = aug_masks
+        train_images[j+1:j+6] = aug_ims
+        train_masks[j+1:j+6] = aug_masks
         
     
     mean = np.mean(train_images)
@@ -176,7 +176,7 @@ def get_train_data(image_names):
     
 def train(X, Y, learning_rate, epochs, batch_size):
     model = build_net(IMG_WIDTH, IMG_HEIGHT, batch_size, learning_rate)
-    checkpoint = ModelCheckpoint('model_weights_overfit.hd5', monitor='val_loss')
+    checkpoint = ModelCheckpoint('model_weights_augment.hd5', monitor='val_loss')
     history = LossHistory()
     model.fit(X, Y, batch_size=batch_size, epochs=epochs, verbose=1, shuffle=True, validation_split=0.2, callbacks=[checkpoint, history])
     return model
@@ -185,7 +185,7 @@ def predict_and_score(image_names):
     # get dice coeff
     print("loading model and predicting")
     X, _ = get_train_data(image_names)
-    model = load_model('model_weights_overfit.hd5', compile=False)
+    model = load_model('model_weights_augment.hd5', compile=False)
     img_masks = model.predict(X, batch_size=256, verbose=1)
     # resize
     masks_resized = np.zeros((img_masks.shape[0], ORIGINAL_HEIGHT, ORIGINAL_WIDTH))
@@ -194,7 +194,7 @@ def predict_and_score(image_names):
         masks_resized[i] = im_resized
     print("Loading ground truth and dicing")
     # load ground truth masks for these images
-    labels = np.zeros((len(X), ORIGINAL_WIDTH, ORIGINAL_HEIGHT))
+    labels = np.zeros((len(X), ORIGINAL_HEIGHT, ORIGINAL_WIDTH))
     for f in image_names:
             im = Image.open("ultrasound-nerve-segmentation/masks/masks/"+f+ "_mask.tif")
             labels[i] = np.array(im)
@@ -206,7 +206,6 @@ def predict_and_score(image_names):
 
 def main():
     files = np.array(os.listdir("ultrasound-nerve-segmentation/train/train"))
-    # image_names = files[np.where(np.char.find(files, '_mask')<0)]
     splitfile = np.vectorize(lambda x: os.path.splitext(x)[0])
     image_names = splitfile(files)
 
