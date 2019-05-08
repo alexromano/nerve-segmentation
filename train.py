@@ -19,12 +19,15 @@ IMG_WIDTH = 128
 IMG_HEIGHT = 128
 
 # a smoothed version of dice coefficient
-def dice(y, y_pred):
-    intersection = K.sum(K.flatten(y) * K.flatten(y_pred))
-    return (2.0 * intersection + 1) / (K.sum(y) + K.sum(y_pred) + 1)
+# a smoothed version of dice coefficient
+def dice(y_true, y_pred):
+    y_true_f = K.flatten(y_true)
+    y_pred_f = K.flatten(y_pred)
+    intersection = K.sum(y_true_f * y_pred_f)
+    return (2. * intersection + 1.0) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1.0)
 
-def dice_loss(y, y_pred):
-    return -tf.log(dice(y, y_pred))
+def dice_loss(y_true, y_pred):
+    return -dice(y_true, y_pred)
 
 # Build U-Net/FCN style model
 def build_net(image_width, image_height, batch_size, learning_rate):
@@ -164,8 +167,8 @@ def get_data_generators(path, images):
         seed=seed, subset='validation') 
 
     # combine generators into one which yields image and masks
-    train_generator = zip(image_generator, mask_generator)
-    validation_generator = zip(image_val_gen, mask_val_gen)
+    train_generator = combine_generator(image_generator, mask_generator)
+    validation_generator = combine_generator(image_val_gen, mask_val_gen)
 
     return train_generator, validation_generator
     
@@ -206,12 +209,14 @@ def predict_and_score(image_names):
     import tensorflow as tf
     print(tf.Session().run(d))
 
+def combine_generator(gen1, gen2):
+    while True:
+        yield(gen1.next(), gen2.next())
+
 def main():
     files = np.array(os.listdir("ultrasound-nerve-segmentation/train/train"))
-    splitfile = np.vectorize(lambda x: os.path.splitext(x)[0])
+    splitfile = np.vectorize(lambda x: os.path.splitext(x)[0])  
     image_names = splitfile(files)
-
-    
 
     model = train(image_names, 1e-4, 20, 16)
 
