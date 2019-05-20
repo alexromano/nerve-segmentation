@@ -173,12 +173,35 @@ def get_train_data(image_names):
     train_images /= std
     train_masks /= 255.0 
     return np.expand_dims(train_images, axis=3), np.expand_dims(train_masks, axis=3)
-    
-def train(X, Y, learning_rate, epochs, batch_size):
+
+def get_val_data():
+    val_files = np.array(os.listdir("ultrasound-nerve-segmentation/val/imgs")) 
+    splitfile = np.vectorize(lambda x: os.path.splitext(x)[0])
+    val_names = splitfile(val_files)
+
+    val_images = np.zeros((val_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
+    val_masks = np.zeros((val_names.shape[0], IMG_HEIGHT, IMG_WIDTH))
+
+    for i in range(0, len(val_names)):
+        im = Image.open("ultrasound-nerve-segmentation/val/imgs/"+val_names[i]+".tif")
+        mask = Image.open("ultrasound-nerve-segmentation/val/masks/"+val_names[i]+"_mask.tif")
+        im_arr = np.array(im.resize((IMG_WIDTH, IMG_HEIGHT)))
+        mask_arr = np.array(mask.resize((IMG_WIDTH, IMG_HEIGHT)))
+
+        val_images[i] = im_arr
+        val_masks[i] = mask_arr
+
+    val_images -= np.mean(val_images)
+    val_images /= np.std(val_images)
+    val_masks /= 255.0
+
+    return np.expand_dims(val_images, axis=3), np.expand_dims(val_masks, axis=3)
+
+def train(data, labels, val_data, learning_rate, epochs, batch_size):
     model = build_net(IMG_WIDTH, IMG_HEIGHT, batch_size, learning_rate)
     checkpoint = ModelCheckpoint('model_weights_augment.hd5', monitor='val_loss')
     history = LossHistory()
-    model.fit(X, Y, batch_size=batch_size, epochs=epochs, verbose=1, shuffle=True, validation_split=0.2, callbacks=[checkpoint, history])
+    model.fit(data, labels, batch_size=batch_size, epochs=epochs, verbose=1, shuffle=True, validation_data=val_data, callbacks=[checkpoint, history])
     return model
 
 def predict_and_score(image_names):
@@ -210,8 +233,9 @@ def main():
     image_names = splitfile(files)
 
     train_images, train_masks = get_train_data(image_names)
+    val_data = get_val_data()
 
-    model = train(train_images, train_masks, 1e-5, 20, 32)
+    model = train(train_images, train_masks, val_data, 1e-5, 20, 32)
 
     # predict_and_score(image_names)
 
