@@ -5,18 +5,19 @@ import os
 import csv
 import cv2
 from tensorflow.keras.models import Model, load_model
-from train import preprocess
 
 original_width = 420
 original_height = 580
+IMG_WIDTH = 128
+IMG_HEIGHT = 128
 
 def get_test_images():
     print("Getting test images..")
     files = os.listdir("ultrasound-nerve-segmentation/test")
     test_imgs = []
-    for f in files[:10]:
+    for f in files:
         im = Image.open("ultrasound-nerve-segmentation/test/"+f)
-        im_arr = preprocess(im)
+        im_arr = np.asarray(im.resize((IMG_WIDTH, IMG_HEIGHT)))
         test_imgs.append(im_arr)
     mean = np.mean(test_imgs)
     std = np.std(test_imgs)
@@ -26,7 +27,7 @@ def get_test_images():
 
 def get_predictions(images):
     print("Loading model..")
-    model = load_model('model_weights.hd5', compile=False)
+    model = load_model('model_weights_augment.hd5', compile=False)
     img_masks = model.predict(images, batch_size=256, verbose=1)
     
     print("Running predictions")
@@ -37,7 +38,7 @@ def get_predictions(images):
     print("Saving predictions")
     with open(str(dt.now())+'.csv', 'w') as f:
         writer = csv.writer(f, delimiter=',')
-        writer.writerow(["image", "pixels"])
+        writer.writerow(["img", "pixels"])
         for i, mask in enumerate(img_masks_sized):
             mask[mask >= 0.5] = 1
             mask[mask < 0.5] = 0
