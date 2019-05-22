@@ -6,10 +6,11 @@ import csv
 import cv2
 import tensorflow as tf
 from tensorflow.keras.models import Model, load_model
-from train import preprocess
 
 original_width = 580
 original_height = 420
+IMG_WIDTH = 128
+IMG_HEIGHT = 128
 test_dir = "ultrasound-nerve-segmentation/test"
 
 def get_test_images():
@@ -23,7 +24,7 @@ def get_test_images():
     for i in range(len(files)):
         img_id = int(files[i].split('.')[0])
         im = Image.open(test_dir+"/"+files[i])
-        im_arr = preprocess(im)
+        im_arr = np.asarray(im.resize((IMG_WIDTH, IMG_HEIGHT)))
         img_ids[i] = img_id
         test_imgs[i] = im_arr
 
@@ -48,7 +49,6 @@ def get_predictions(images, ids):
     for i in range(img_masks.shape[0]):
         img_masks_sized[i] = cv2.resize(img_masks[i], (original_width, original_height))
     np.save("predictions.npy", img_masks_sized)
-    print(len(img_masks_sized))
     print("Saving predictions")
     with open(str(dt.now())+'.csv', 'w') as f:
         writer = csv.writer(f, delimiter=',')
@@ -58,7 +58,7 @@ def get_predictions(images, ids):
             print(ids[i])
             writer.writerow([str(ids[i]), run_length_enc(mask)])
 
-# run length encoding
+# run length encoding taken from https://github.com/jocicmarko/ultrasound-nerve-segmentation/blob/master/submission.py
 def run_length_enc(label):
     from itertools import chain
     label = label.flatten(order='F')
@@ -76,8 +76,5 @@ def run_length_enc(label):
 def submission():
     test_images, img_ids = get_test_images()
     get_predictions(test_images, img_ids)
-
-# img, rle
-# 1, 1 1 4 10
 
 if __name__ == "__main__": submission()
